@@ -1,7 +1,8 @@
 import tkinter as tk
-from tkinter import filedialog, colorchooser
+from tkinter import filedialog, colorchooser, messagebox
 from PIL import Image, ImageTk
 import qrcode
+from qrcode.image.svg import SvgImage, SvgFillImage
 
 class QRCodeGenerator(tk.Tk):
 	def __init__(self):
@@ -21,14 +22,8 @@ class QRCodeGenerator(tk.Tk):
 		self.bg_color_button = tk.Button(self, text="Hintergrundfarbe wählen", command=self.choose_background_color)
 		self.bg_color_button.pack(pady=5)
 
-		self.foreground_color = 'black'  # Standardfarbe für den Vordergrund
-		self.background_color = 'white'  # Standardfarbe für den Hintergrund
-
 		self.generate_button = tk.Button(self, text="QR-Code generieren", command=self.generate_qr_code)
 		self.generate_button.pack(pady=15)
-
-		self.placeholder_label = tk.Label(self, text="Simon Marcel Linden", justify=tk.CENTER)
-		self.placeholder_label.pack(pady=15)
 
 		self.qr_image_label = tk.Label(self)
 		self.qr_image_label.pack(pady=15)
@@ -37,7 +32,8 @@ class QRCodeGenerator(tk.Tk):
 		self.save_button.pack(pady=5)
 		self.save_button['state'] = tk.DISABLED
 
-		self.qr_image = None
+		self.foreground_color = 'black'  # Standardfarbe für den Vordergrund
+		self.background_color = 'white'  # Standardfarbe für den Hintergrund
 
 	def choose_foreground_color(self):
 		color_code = colorchooser.askcolor(title="Wähle eine Vordergrundfarbe")[1]
@@ -51,15 +47,10 @@ class QRCodeGenerator(tk.Tk):
 
 	def generate_qr_code(self):
 		data = self.text_entry.get()
-		if data.strip() == "":
-			tk.messagebox.showerror("Fehler", "Bitte gib einen Text oder URL ein.")
+		if not data:
+			messagebox.showerror("Fehler", "Bitte gib einen Text oder URL ein.")
 			return
 
-		self.create_qr_code(data)
-		self.placeholder_label.pack_forget()
-		self.save_button['state'] = tk.NORMAL
-
-	def create_qr_code(self, data):
 		qr = qrcode.QRCode(
 			version=1,
 			error_correction=qrcode.constants.ERROR_CORRECT_H,
@@ -68,30 +59,47 @@ class QRCodeGenerator(tk.Tk):
 		)
 		qr.add_data(data)
 		qr.make(fit=True)
+		self.qr_code = qr  # Speichere das QRCode-Objekt zur späteren Verwendung
 
-		# Stelle sicher, dass die Farben korrekt an make_image übergeben werden
-		self.qr_image = qr.make_image(fill_color=self.foreground_color, back_color=self.background_color).convert('RGB')
-
+		# Erzeuge ein Bild für die Anzeige in der GUI
+		img = qr.make_image(fill_color=self.foreground_color, back_color=self.background_color).convert('RGB')
 		img_path = "temp_qr_code.png"
-		self.qr_image.save(img_path)
+		img.save(img_path)
+
 		self.show_qr_code(img_path)
+		self.save_button['state'] = tk.NORMAL
 
 	def show_qr_code(self, filepath):
-		img = Image.open(filepath)
-		img = img.resize((250, 250), Image.Resampling.LANCZOS)
-		img = ImageTk.PhotoImage(img)
-		self.qr_image_label.configure(image=img)
-		self.qr_image_label.image = img
+		if filepath.endswith('.png'):
+			img = Image.open(filepath)
+			img = img.resize((250, 250), Image.Resampling.LANCZOS)
+			tk_img = ImageTk.PhotoImage(img)
+			self.qr_image_label.configure(image=tk_img)
+			self.qr_image_label.image = tk_img
+		else:
+			# Update UI to reflect SVG is loaded, but cannot be displayed in a Tkinter label directly.
+			self.qr_image_label.configure(text="SVG QR-Code generiert. Bitte zum Anzeigen die SVG-Datei öffnen.")
+
 
 	def save_qr_code(self):
-		if self.qr_image is None:
-			tk.messagebox.showerror("Fehler", "Kein QR-Code zum Speichern vorhanden.")
+		if self.qr_code is None:
+			messagebox.showerror("Fehler", "Kein QR-Code zum Speichern vorhanden.")
 			return
+
 		file_path = filedialog.asksaveasfilename(defaultextension='.png',
-												filetypes=[("PNG-Dateien", "*.png"), ("Alle Dateien", "*.*")])
+												filetypes=[("PNG-Dateien", "*.png"), ("SVG-Dateien", "*.svg"), ("Alle Dateien", "*.*")])
 		if file_path:
-			self.qr_image.save(file_path)
-			tk.messagebox.showinfo("Erfolg", "QR-Code erfolgreich gespeichert.")
+			if file_path.endswith('.svg'):
+				# SVG speichern, öffne die Datei im binären Schreibmodus
+				with open(file_path, "wb") as f:
+					img = self.qr_code.make_image(fill_color=self.foreground_color, back_color=self.background_color, image_factory=SvgFillImage)
+					img.save(f)
+			else:
+				# PNG speichern
+				img = self.qr_code.make_image(fill_color=self.foreground_color, back_color=self.background_color).convert('RGB')
+				img.save(file_path)
+			messagebox.showinfo("Erfolg", "QR-Code erfolgreich gespeichert.")
+
 
 if __name__ == "__main__":
 	app = QRCodeGenerator()
